@@ -1,5 +1,5 @@
 # audio corpora builder
-Build large audio corpora in various languages &amp;rarr; {Yorùbá, Urhobo, Edo, Èʋe, Igbo}
+Build large audio corpora in various languages &rarr; {Yorùbá, Urhobo, Edo, Èʋe, Igbo}
 
 
 ### Audio Corpora
@@ -12,5 +12,6 @@ The process is as follows:
   * Execute `$ python ./src/download_youtube.py --output ./audio/`
 
 
-### Requirements
- * `pip install sox pydub`
+### Install dependencies
+ * Python 3.5, 3.6 or 3.7
+ * `pip install -r requirements.txt`
