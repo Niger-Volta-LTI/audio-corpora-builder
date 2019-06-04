@@ -2,7 +2,7 @@
 Build large audio corpora in various languages &rarr; {Yorùbá, Urhobo, Edo, Èʋe, Igbo}
 
 
-### Audio Corpora
+## Audio Corpora
 
 Curate specific language corpora from the wealth of audio available in good quality on [YouTube](https://www.youtube.com/channel/UCJ6EtHY8NGtpSK5m7fBxytw) 
 The process is as follows:
@@ -12,6 +12,6 @@ The process is as follows:
   * Execute `$ python ./src/download_youtube.py --output ./audio/`
 
 
-### Install dependencies
+## Install dependencies
  * Python 3.5, 3.6 or 3.7
  * `pip install -r requirements.txt`
