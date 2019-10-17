@@ -8,8 +8,8 @@ Curate specific language corpora from the wealth of audio available in good qual
 The process is as follows:
   * Locate a list of existing playlists, e.g. [OrisunTV Iroyin](https://www.youtube.com/playlist?list=PLerPP_LFfERFAYid2qavoTOc81W0fGdnZ)
   * Alternatively, create a new playlist with a custom set of YouTube videos 
-  * Update `sources.yml` with the reference to the playlist
-  * Execute `$ python ./src/download_youtube.py --output ./audio/`
+  * Update `yoruba_sources.yml` with the reference to the playlist
+  * Execute `$ python download_youtube.py --output ./audio/`
 
 
 ## Install dependencies
