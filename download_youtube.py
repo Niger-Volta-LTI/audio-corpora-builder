@@ -38,10 +38,11 @@ def download_playlist(language, playlist_name, playlist_id):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="path to download videos and max number")
     parser.add_argument('--output', dest='output_path', default=os.getcwd(), required=True)
-    parser.add_argument('--downloads', dest='max_downloads', default=1200)
+    parser.add_argument('--downloads', type=int, dest='max_downloads', default=1200)
     args = parser.parse_args()
+    # Example: $Python download_youtube.py --output user/folder/download
 
     sources = read_yaml("yoruba_sources.yml")
     for language, categories in sources.items():
