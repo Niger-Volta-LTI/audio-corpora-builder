@@ -7,7 +7,7 @@ import yaml
 
 def read_yaml(file_name):
     with open(file_name, "r") as f:
-        return yaml.load(f)
+        return yaml.load(f, Loader=yaml.FullLoader)
 
 def download(language, source, source_name, source_type):
 
