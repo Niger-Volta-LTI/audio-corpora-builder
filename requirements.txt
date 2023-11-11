@@ -1,4 +1,5 @@
 pydub
 pyyaml
+runez
 sox
-youtube-dl
+yt-dlp

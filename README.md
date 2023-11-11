@@ -13,5 +13,5 @@ The process is as follows:
 
 
 ## Install dependencies
- * Python 3.5, 3.6 or 3.7
+ * Python 3.7 or later
  * `pip install -r requirements.txt`
