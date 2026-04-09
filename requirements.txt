@@ -1,5 +1,6 @@
 pydub
 pyyaml
+pytest
 runez
 sox
 yt-dlp
