@@ -1,4 +1,6 @@
 urhobo-pararan-mock-news:
+  users:
+    - https://www.youtube.com/@PararanMockNews
   playlists:
     - https://www.youtube.com/playlist?list=PLGrMLNkFiWvRl-tNNmlyAFRLU0e68cS2Z
 
