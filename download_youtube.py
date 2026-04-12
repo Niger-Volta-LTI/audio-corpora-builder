@@ -1,100 +1,262 @@
 import argparse
+import logging
 import os
+import sys
+from urllib.parse import urlparse, parse_qs
 
 import runez
 import yaml
 
+LOGGER = logging.getLogger(__name__)
+
 
 def read_yaml(file_name):
-    with open(file_name, "r") as f:
-        return yaml.load(f, Loader=yaml.FullLoader)
+    """Load and validate YAML configuration file."""
+    try:
+        with open(file_name, "r") as f:
+            sources = yaml.load(f, Loader=yaml.FullLoader)
+        validate_sources(sources, file_name)
+        return sources
+    except FileNotFoundError:
+        LOGGER.error(f"Configuration file not found: {file_name}")
+        raise
+    except yaml.YAMLError as e:
+        LOGGER.error(f"Invalid YAML in {file_name}: {e}")
+        raise
 
 
-def download(yaml_category, source, source_type):
+def validate_sources(sources, file_name):
+    """Validate sources dictionary structure."""
+    if not sources:
+        LOGGER.error(f"Configuration file {file_name} is empty or invalid")
+        raise ValueError(f"Empty configuration in {file_name}")
+
+    for category, data in sources.items():
+        if not isinstance(data, dict):
+            LOGGER.error(
+                f"Category '{category}' must be a dictionary with 'playlists' and 'users' keys"
+            )
+            raise ValueError(
+                f"Invalid structure for category '{category}' in {file_name}"
+            )
+
+        if "playlists" not in data:
+            LOGGER.error(f"Category '{category}' missing 'playlists' key")
+            raise ValueError(
+                f"Missing 'playlists' in category '{category}' of {file_name}"
+            )
+
+        if "users" not in data:
+            LOGGER.error(f"Category '{category}' missing 'users' key")
+            raise ValueError(f"Missing 'users' in category '{category}' of {file_name}")
+
+
+def validate_url(url, source_type):
+    """Validate YouTube URL format."""
+    if not url:
+        return False, f"Empty URL for {source_type}"
+
+    url = url.strip()
+    if not url.startswith("https://"):
+        return False, f"URL must start with 'https://': {url}"
+
+    if "youtube.com" not in url and "youtu.be" not in url:
+        LOGGER.warning(f"URL may not be a YouTube link: {url}")
+
+    return True, url
+
+def extract_playlist_id(url):
+    """Extract YouTube playlist ID from URL.
+    Args:       url: YouTube playlist URL
+    Returns:    Playlist ID string
+    Raises:     ValueError: If URL is invalid or doesn't contain a playlist ID
+    """
+    try:
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query)
+        playlist_id = query_params.get('list', [None])[0]
+
+        if not playlist_id:
+            raise ValueError(f"No playlist ID found in URL: {url}")
+
+        # Basic validation: playlist IDs are typically alphanumeric
+        if not playlist_id.replace('_', '').replace('-', '').isalnum():
+            raise ValueError(f"Invalid playlist ID format: {playlist_id}")
+
+        return playlist_id
+    except Exception as e:
+        raise ValueError(f"Failed to parse playlist URL '{url}': {e}")
+
+
+def build_yt_dlp_command(source, source_type, output_path, max_downloads, audio_format="wav"):
+    """Build yt-dlp command arguments based on a source type."""
+    args = ["yt-dlp", "-i", "--progress"]
+
     if source_type == "playlists":
-        output_path_raw = os.path.join(args.output_path, yaml_category, source_type, source.split('&')[-1])
-        playlist_archive = os.path.join(output_path_raw, "archive.txt")
+        archive_path = os.path.join(output_path, "archive.txt")
+        args.extend(["--download-archive", archive_path, "--no-post-overwrites"])
+        args.extend(["--max-downloads", str(max_downloads)])
 
-        print("Downloading {0} {1} to {2}".format(source_type, source, output_path_raw))
-        run_result = runez.run("yt-dlp",
-                               "-i",
-                               "--download-archive",
-                               "%s" % playlist_archive,
-                               "--no-post-overwrites",
-                               "--max-downloads",
-                               "%s" % args.max_downloads,
-                               "--extract-audio",
-                               "--audio-format",
-                               "wav",
-                               "%s" % source,
-                               "-o",
-                               "{}/%(track)s-%(id)s.%(ext)s".format(output_path_raw),
-                               fatal=False
-                               )
-        if run_result.failed:
-            print("runez yt-dlp failed, check if the max-downloads is set properly ")
-            output_logs = "./download_logs.txt"
-            with open(output_logs, mode="wt") as f:
-                f.write(run_result.full_output)
-                print("Checkout failure details in the {} file".format(output_logs))
-        else:
-            print("yt-dlp success")
+    elif source_type == "users":
+        args.extend(["--max-downloads", str(min(10, max_downloads))])
 
-    else:  # source_type == "users"
-        output_path_raw = os.path.join(args.output_path, yaml_category, source_type, source.split('/')[-1])
-        if os.path.exists(output_path_raw):
-            print("skipping {0} because the target folder already exists".format(output_path_raw))
-        else:
-            print("Downloading for {}: `source_type=={}` {} to {}".format(yaml_category,
-                                                                          source_type,
-                                                                          source,
-                                                                          output_path_raw))
-            # If we ever want to download everything from a users URL, set the max downloads to something reasonable
-            max_downloads = min(10, args.max_downloads)
-            run_result = runez.run("yt-dlp",
-                                   "-i",
-                                   "--max-downloads",
-                                   "%s" % max_downloads,
-                                   "--extract-audio",
-                                   "--audio-format",
-                                   "wav",
-                                   "%s" % source,
-                                   "-o",
-                                   "{}/%(track)s-%(id)s.%(ext)s".format(output_path_raw),
-                                   fatal=False
-                                   )
-            if run_result.failed:
-                output_logs = "./download_logs.txt"
-                with open(output_logs, mode="wt") as f:
-                    f.write(run_result.full_output)
-                    print("max-downloads={} was likely hit, see logs={} for details & adjust as needed".
-                          format(max_downloads, output_logs))
-            else:
-                print("yt-dlp success")
+    else:
+        raise ValueError(f"Unknown source type: {source_type}")
+
+    args.extend(["--extract-audio", "--audio-format", audio_format, source, "-o", f"{output_path}/%(track)s-%(id)s.%(ext)s"])
+    return args
 
 
-if __name__ == '__main__':
+def download(yaml_category, source, source_type, args):
+    """Download audio from a YouTube source."""
+    if not source or not source.strip():
+        LOGGER.warning(f"Skipping empty {source_type} in category '{yaml_category}'")
+        return True
 
-    parser = argparse.ArgumentParser(description="path to download videos and max number")
-    parser.add_argument('--output', dest='output_path', default=os.getcwd(), required=True)
-    parser.add_argument('--users', dest='users', action='store_true',
-                        help='Download from users section if specified.')
-    parser.add_argument('--downloads', type=int, dest='max_downloads', default=1200)
+    valid, result = validate_url(source, source_type)
+    if not valid:
+        LOGGER.error(f"Invalid URL in category '{yaml_category}': {result}")
+        return False
+
+    source = result
+    if source_type == "playlists":
+        # Extract playlist ID safely from URL
+        try:
+            playlist_id = extract_playlist_id(source)
+        except ValueError as e:
+            sys.stdout.write(f"[ERROR] {e}\n")
+            sys.stdout.flush()
+            return None
+        output_path = os.path.join(args.output_path, yaml_category, source_type, playlist_id)
+
+    elif source_type == "users":
+        source_id = source.split("/")[-1]
+        output_path = os.path.join(
+            args.output_path, yaml_category, source_type, source_id
+        )
+    else:
+        LOGGER.error(f"Unknown source type: {source_type}")
+        return False
+
+    os.makedirs(output_path, exist_ok=True)
+    LOGGER.info(f"Downloading {source_type} to {output_path}")
+    command = build_yt_dlp_command(
+        source=source,
+        source_type=source_type,
+        output_path=output_path,
+        max_downloads=args.max_downloads,
+        audio_format=args.audio_format,
+    )
+    run_result = runez.run(*command, fatal=False)
+
+    if run_result.failed:
+        _handle_download_failure(run_result, source_type, source, output_path)
+        return False
+
+    LOGGER.info(f"Successfully downloaded {source_type}: {source}")
+    return True
+
+
+def _handle_download_failure(run_result, source_type, source, output_path):
+    """Handle download failure with helpful error messages."""
+    output_logs = "./download_logs.txt"
+    with open(output_logs, mode="wt") as f:
+        f.write(run_result.full_output)
+
+    error_msg = f"Failed to download {source_type}: {source}"
+    if "max-downloads" in run_result.full_output.lower():
+        error_msg += (
+            f" - max-downloads limit likely exceeded. Check {output_logs} for details."
+        )
+    elif "playlist" in run_result.full_output.lower():
+        error_msg += " - playlist may be private or invalid."
+    elif "video" in run_result.full_output.lower():
+        error_msg += " - video may be unavailable or region-locked."
+    else:
+        error_msg += f" - see {output_logs} for full error output."
+
+    LOGGER.error(error_msg)
+
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(description="Download YouTube audio for language corpora")
+    parser.add_argument(
+        "--output",
+        dest="output_path",
+        default=os.getcwd(),
+        required=True,
+        help="Output directory for downloaded audio",
+    )
+    parser.add_argument(
+        "--sources",
+        dest="sources_file",
+        default="yoruba_sources.yml",
+        help="Sources configuration file (default: yoruba_sources.yml)",
+    )
+    parser.add_argument(
+        "--users",
+        dest="download_users",
+        action="store_true",
+        help="Download from users section if specified (default: off)",
+    )
+    parser.add_argument(
+        "--format",
+        dest="audio_format",
+        choices=["wav", "mp3", "flac"],
+        default="wav",
+        help="Audio format (default: wav)",
+    )
+    parser.add_argument(
+        "--downloads",
+        type=int,
+        dest="max_downloads",
+        default=1200,
+        help="Maximum number of downloads per source (default: 1200)",
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
+    )
     args = parser.parse_args()
-    # Example: $Python download_youtube.py --output user/folder/download
 
-    sources = read_yaml("yoruba_sources.yml")
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+    LOGGER.info(f"Loading sources from {args.sources_file}")
+    try:
+        sources = read_yaml(args.sources_file)
+    except (FileNotFoundError, yaml.YAMLError, ValueError) as e:
+        LOGGER.error(f"Failed to load sources: {e}")
+        return 1
+
+    total_downloads, successful, failed = 0,0,0
     for yaml_category, categories in sources.items():
+        LOGGER.info(f"Processing category: {yaml_category}")
 
-        # collect particular playlists
         for playlist_name in categories["playlists"]:
-            if playlist_name is None:
-                continue
-            download(yaml_category, playlist_name, "playlists")
+            if playlist_name:
+                total_downloads += 1
+                if download(yaml_category, playlist_name, "playlists", args):
+                    successful += 1
+                else:
+                    failed += 1
 
-        # collect users (i.e. OrisunTV), but default this option is off unless explicitly specificed with --users
-        if args.users:
+        if args.download_users:
             for url in categories["users"]:
-                if url is None:
-                    continue
-                download(yaml_category, url, "users")
+                if url:
+                    total_downloads += 1
+                    if download(yaml_category, url, "users", args):
+                        successful += 1
+                    else:
+                        failed += 1
+
+    LOGGER.info(f"Download complete: {successful}/{total_downloads} successful, {failed} failed")
+    if failed > 0:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    exit(main())
